@@ -1,12 +1,19 @@
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
-from app.core import ai_recipes, recipes
+from app.core import ai_recipes, limits, recipes
 from app.core.recipes import Ingredient, Recipe
 from app.main import app
 # =================================================================================================
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def fresh_guard(monkeypatch):
+  # Each test gets its own cache and counters, so tests can't leak into each other.
+  monkeypatch.setattr(limits, "guard", limits.AIGuard(daily_cap=20, per_ip_limit=5))
 
 MEAL = {
   "idMeal": "52771",
@@ -135,3 +142,47 @@ def test_index_page_served():
   response = client.get("/")
   assert response.status_code == 200
   assert "Recipe Finder" in response.text
+
+
+# --- AI protection -------------------------------------------------------------------------------
+
+def counting_generator(monkeypatch):
+  calls = []
+  def fake(q):
+    calls.append(q)
+    return ai_recipe()
+  monkeypatch.setattr(ai_recipes, "generate_recipe", fake)
+  return calls
+
+
+def test_repeat_dish_is_served_from_cache(monkeypatch):
+  calls = counting_generator(monkeypatch)
+  for q in ["Jollof Rice", "jollof rice", "  JOLLOF   rice "]:
+    assert client.post("/api/recipes/generate", json={"q": q}).status_code == 200
+  assert len(calls) == 1
+
+
+def test_per_ip_limit_returns_tired_message(monkeypatch):
+  counting_generator(monkeypatch)
+  for i in range(5):
+    assert client.post("/api/recipes/generate", json={"q": f"dish {i}"}).status_code == 200
+  response = client.post("/api/recipes/generate", json={"q": "dish 6"})
+  assert response.status_code == 429
+  assert "tired" in response.json()["detail"]
+
+
+def test_cache_hits_still_work_after_limit(monkeypatch):
+  counting_generator(monkeypatch)
+  for i in range(5):
+    client.post("/api/recipes/generate", json={"q": f"dish {i}"})
+  assert client.post("/api/recipes/generate", json={"q": "dish 0"}).status_code == 200
+
+
+def test_ai_failure_is_not_cached(monkeypatch):
+  def failed(q):
+    raise ai_recipes.AIRecipeError("boom")
+  monkeypatch.setattr(ai_recipes, "generate_recipe", failed)
+  assert client.post("/api/recipes/generate", json={"q": "pho"}).status_code == 502
+  calls = counting_generator(monkeypatch)
+  assert client.post("/api/recipes/generate", json={"q": "pho"}).status_code == 200
+  assert len(calls) == 1

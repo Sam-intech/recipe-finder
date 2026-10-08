@@ -4,16 +4,17 @@ from dataclasses import asdict
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app.core import ai_recipes, recipes, shopping
+from app.core import ai_recipes, limits, recipes, shopping
 from app.core.recipes import Ingredient
 # ====================================================================================
 
 STATIC_DIR = Path(__file__).parent / "static"
+TIRED_MESSAGE = "Recipe Finder is tired, come back later 🧸💤"
 # ====================================================================================
 
 app = FastAPI(title="Recipe Finder")
@@ -51,13 +52,25 @@ def search(q: str = Query(min_length=1, max_length=100)):
 
 
 @app.post("/api/recipes/generate")
-def generate(body: GenerateRequest):
-  try:
-    recipe = ai_recipes.generate_recipe(body.q)
-  except ai_recipes.AINotConfigured:
-    raise HTTPException(status_code=503, detail="AI generation isn't set up on this server.")
-  except ai_recipes.AIRecipeError:
-    raise HTTPException(status_code=502, detail="The AI couldn't produce a usable recipe. Try again.")
+def generate(body: GenerateRequest, request: Request):
+  # 1. Cache first: a dish someone already generated costs nothing and uses no limits.
+  recipe = limits.guard.cached(body.q)
+  if recipe is limits.MISSING:
+    # 2. Only a real AI call spends a slot. Behind a proxy, request.client.host may be the
+    #    proxy's IP rather than the user's. Check this when you choose hosting.
+    ip = request.client.host if request.client else "unknown"
+    try:
+      limits.guard.take_slot(ip)
+    except limits.LimitReached:
+      raise HTTPException(status_code=429, detail=TIRED_MESSAGE)
+    try:
+      recipe = ai_recipes.generate_recipe(body.q)
+    except ai_recipes.AINotConfigured:
+      raise HTTPException(status_code=503, detail="AI generation isn't set up on this server.")
+    except ai_recipes.AIRecipeError:
+      raise HTTPException(status_code=502, detail="The AI couldn't produce a usable recipe. Try again.")
+    # Failures above are not cached, so a retry can succeed. "Not a dish" (None) is cached.
+    limits.guard.remember(body.q, recipe)
   if recipe is None:
     raise HTTPException(status_code=422, detail="That doesn't look like a dish. Try a dish name.")
   return {"recipe": asdict(recipe)}
