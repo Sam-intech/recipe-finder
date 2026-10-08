@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* Design tokens. Change a colour here and it changes everywhere. */
+@theme {
+  --color-petal: #fbe4e8;      /* page background */
+  --color-milk: #fff9fa;       /* surfaces */
+  --color-mist: #ebc3cf;       /* lines, quiet borders */
+  --color-raspberry: #b0305f;  /* the one accent: actions */
+  --color-fig: #3a1630;        /* text */
+  --color-pistachio: #b5d39a;  /* "I already have this" */
+  --font-display: "Gloock", Georgia, serif;
+  --font-body: "Figtree", system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-petal);
+  color: var(--color-fig);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-raspberry);
+  outline-offset: 3px;
+}
+
+/* One orchestrated moment: the recipe rising into place. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: none; }
+}
+.rise { animation: rise 600ms cubic-bezier(.2, .7, .2, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
