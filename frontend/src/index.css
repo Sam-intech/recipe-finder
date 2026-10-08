@@ -1,35 +1,36 @@
 @import "tailwindcss";
 
-/* Design tokens. Change a colour here and it changes everywhere. */
+/* Design tokens (Studio Kitchen). Change a colour here and it changes everywhere. */
 @theme {
-  --color-petal: #fbe4e8;      /* page background */
-  --color-milk: #fff9fa;       /* surfaces */
-  --color-mist: #ebc3cf;       /* lines, quiet borders */
-  --color-raspberry: #b0305f;  /* the one accent: actions */
-  --color-fig: #3a1630;        /* text */
-  --color-pistachio: #b5d39a;  /* "I already have this" */
-  --font-display: "Gloock", Georgia, serif;
-  --font-body: "Figtree", system-ui, sans-serif;
+  --color-porcelain: #f6f3f7;  /* page background */
+  --color-ink: #221a24;        /* text */
+  --color-muted: #5e5360;      /* secondary text */
+  --color-line: #eee7ee;       /* dividers */
+  --color-orchid: #7a2e77;     /* the one accent: actions */
+  --color-sage: #4f7a3a;       /* "I already have this" */
+  --color-leaf: #c9e4b4;       /* progress fill on orchid */
+  --font-display: "Bricolage Grotesque", system-ui, sans-serif;
+  --font-body: "Instrument Sans", system-ui, sans-serif;
 }
 
 body {
-  background: var(--color-petal);
-  color: var(--color-fig);
+  background: var(--color-porcelain);
+  color: var(--color-ink);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-raspberry);
+  outline: 3px solid var(--color-orchid);
   outline-offset: 3px;
 }
 
-/* One orchestrated moment: the recipe rising into place. */
+/* One orchestrated moment: the recipe tiles rising into place, one after another. */
 @keyframes rise {
-  from { opacity: 0; transform: translateY(24px); }
+  from { opacity: 0; transform: translateY(28px); }
   to { opacity: 1; transform: none; }
 }
-.rise { animation: rise 600ms cubic-bezier(.2, .7, .2, 1) both; }
+.rise { animation: rise 650ms cubic-bezier(.2, .7, .2, 1) both; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
