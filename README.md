@@ -45,3 +45,15 @@ a 400 can mean the schema was rejected, and 429 means quota or rate limit.
 - Add rate limiting to `/api/recipes/generate`. It spends money on every call and is not limited yet.
 - Get a TheMealDB production key.
 - Decide on caching so repeat searches do not hit the services again.
+
+## Frontend (React)
+
+The interface lives in `frontend/` (React + Vite + Tailwind). Its build is committed into
+`app/static`, so `uvicorn` serves it with no Node needed. To change the UI:
+
+```
+cd frontend
+npm install
+npm run dev     # live reload on http://localhost:5173, API calls go to uvicorn on :8000
+npm run build   # writes the finished site into app/static; commit that too
+```
