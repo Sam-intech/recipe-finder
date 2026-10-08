@@ -1,20 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { searchRecipes, generateRecipe } from "./api.js";
 import RecipeView from "./RecipeView.jsx";
 
+// Starter dishes for the photo ribbon. Each [name, fallback tint, tilt in degrees, height].
+const RIBBON = [
+  ["Shakshuka", "#e9d6e6", -6, 260],
+  ["Shawarma", "#d9e3d2", -3, 320],
+  ["Jollof", "#f1d2cf", 0, 380],
+  ["Pho", "#d8d4ea", 3, 320],
+  ["Pad Thai", "#efe0c9", 6, 260],
+];
+
 export default function App() {
   const [query, setQuery] = useState("");
-  const [searched, setSearched] = useState("");   // the query the results belong to
+  const [searched, setSearched] = useState("");
   const [results, setResults] = useState(null);   // null = nothing searched yet
   const [recipe, setRecipe] = useState(null);
-  const [busy, setBusy] = useState("");           // what we're waiting for, shown to the user
+  const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [tired, setTired] = useState("");         // the AI limit message, kept separate on purpose
+  const [tired, setTired] = useState("");
 
-  async function onSearch(event) {
-    event.preventDefault();
-    const q = query.trim();
+  async function runSearch(q) {
+    q = q.trim();
     if (!q) return;
+    setQuery(q);
     setRecipe(null);
     setError("");
     setBusy("Looking through the recipe box...");
@@ -41,51 +50,50 @@ export default function App() {
     }
   }
 
-  const compact = recipe !== null;
+  function goHome() {
+    setRecipe(null);
+    setResults(null);
+    setQuery("");
+  }
 
   return (
-    <div className="min-h-screen">
-      <header className={compact ? "pt-5 pb-4" : "pt-[14vh] pb-10"}>
-        <div className="mx-auto max-w-5xl px-4 sm:px-8">
-          {compact ? (
+    <div className="min-h-screen overflow-x-hidden">
+      <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-8">
+        <nav className="flex items-center justify-between gap-4">
+          <button onClick={goHome}
+            className="font-display text-[22px] font-extrabold tracking-tight">
+            recipe finder
+          </button>
+          {recipe && (
             <button onClick={() => setRecipe(null)}
-              className="font-display text-2xl text-fig hover:text-raspberry">
-              Recipe Finder
+              className="min-h-11 rounded-full bg-white px-5 text-sm hover:text-orchid">
+              Back to results
             </button>
-          ) : (
-            <h1 className="font-display text-5xl leading-[1.05] sm:text-7xl">
-              What are we<br />cooking tonight?
-            </h1>
           )}
+        </nav>
+      </div>
 
-          <form onSubmit={onSearch} className={"flex items-end gap-3 " + (compact ? "mt-3" : "mt-10")}>
-            <label className="flex-1">
-              <span className="sr-only">Dish name</span>
-              <input value={query} onChange={(e) => setQuery(e.target.value)} maxLength={100}
-                placeholder="Type a dish, like shawarma"
-                className={"w-full border-b-2 border-fig/30 bg-transparent pb-2 placeholder:text-fig/40 " +
-                  "focus:border-raspberry focus:outline-none " + (compact ? "text-lg" : "text-2xl sm:text-3xl")} />
-            </label>
-            <button disabled={!!busy}
-              className="rounded-full bg-raspberry px-6 py-3 font-medium text-milk hover:bg-fig disabled:opacity-60">
-              Find recipe
-            </button>
-          </form>
-
-          <p role="status" className="mt-4 min-h-6 text-fig/70">{busy}</p>
-          {error && <p className="text-raspberry">{error}</p>}
-        </div>
-      </header>
-
-      {!compact && results !== null && (
-        <Results results={results} query={searched} tired={tired} busy={busy}
-          onPick={setRecipe} onGenerate={onGenerate} />
+      {recipe ? (
+        <RecipeView key={recipe.id || recipe.name} recipe={recipe} />
+      ) : (
+        <>
+          <Hero query={query} setQuery={setQuery} busy={busy} onSearch={runSearch}
+            compact={results !== null} />
+          <div className="mx-auto max-w-6xl px-4 sm:px-8">
+            <p role="status" className="min-h-6 text-center text-muted">{busy}</p>
+            {error && <p className="text-center text-orchid">{error}</p>}
+          </div>
+          {results === null ? (
+            <Ribbon onPick={runSearch} />
+          ) : (
+            <Results results={results} query={searched} tired={tired} busy={busy}
+              onPick={setRecipe} onGenerate={onGenerate} />
+          )}
+        </>
       )}
 
-      {compact && <RecipeView key={recipe.id || recipe.name} recipe={recipe} />}
-
-      <footer className="mx-auto max-w-5xl px-4 py-12 text-sm text-fig/60 sm:px-8">
-        Database recipes come from{" "}
+      <footer className="mx-auto max-w-6xl px-4 py-14 text-sm text-muted sm:px-8">
+        Database recipes and photos come from{" "}
         <a className="underline" href="https://www.themealdb.com/" target="_blank" rel="noopener">TheMealDB</a>.
         Recipes marked as AI-written are made by an AI model. Always check labels for allergens.
       </footer>
@@ -93,24 +101,97 @@ export default function App() {
   );
 }
 
+function Hero({ query, setQuery, busy, onSearch, compact }) {
+  return (
+    <section className={"mx-auto max-w-6xl px-4 text-center sm:px-8 " + (compact ? "mt-10" : "mt-20 sm:mt-24")}>
+      {!compact && (
+        <>
+          <h1 className="mx-auto max-w-4xl font-display text-[clamp(52px,8vw,112px)] font-extrabold leading-[.95] tracking-[-.045em]">
+            What are we cooking tonight?
+          </h1>
+          <p className="mx-auto mt-6 max-w-lg text-lg text-muted">
+            A dish name in. A recipe, a tick-list and a shopping list out.
+          </p>
+        </>
+      )}
+      <form onSubmit={(e) => { e.preventDefault(); onSearch(query); }}
+        className="mx-auto mt-10 flex max-w-xl gap-2 rounded-full bg-white p-2 shadow-[0_20px_50px_-20px_rgba(122,46,119,.35)]">
+        <label className="flex min-w-0 flex-1">
+          <span className="sr-only">Dish name</span>
+          <input value={query} onChange={(e) => setQuery(e.target.value)} maxLength={100}
+            placeholder="Shawarma, jollof, pho..."
+            className="min-w-0 flex-1 bg-transparent px-5 text-lg placeholder:text-[#8a7f8c] focus:outline-none" />
+        </label>
+        <button disabled={!!busy}
+          className="min-h-14 shrink-0 rounded-full bg-orchid px-5 font-semibold sm:px-7 text-white hover:bg-ink disabled:opacity-60">
+          Find recipe
+        </button>
+      </form>
+    </section>
+  );
+}
+
+// The fanned photo ribbon. Photos come from the recipe database, so each starter dish
+// is looked up once when the page loads. If a lookup fails we keep the tinted tile.
+function Ribbon({ onPick }) {
+  const [photos, setPhotos] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    RIBBON.forEach(([name]) => {
+      searchRecipes(name)
+        .then((found) => {
+          const thumb = found[0]?.thumbnail;
+          if (thumb && !cancelled) setPhotos((p) => ({ ...p, [name]: thumb }));
+        })
+        .catch(() => {});
+    });
+    return () => { cancelled = true; };  // don't update state after the user has moved on
+  }, []);
+
+  return (
+    <section className="mt-12 pb-8">
+      <div className="flex snap-x gap-5 overflow-x-auto px-6 pb-6 pt-6 sm:justify-center sm:overflow-visible">
+        {RIBBON.map(([name, tint, tilt, height]) => (
+          <button key={name} onClick={() => onPick(name)}
+            style={{ "--tilt": tilt + "deg", height }}
+            className="group relative w-48 shrink-0 snap-center overflow-hidden rounded-[28px] transition-transform duration-500 ease-out sm:w-56 sm:[transform:rotate(var(--tilt))] sm:hover:[transform:rotate(0deg)_translateY(-18px)_scale(1.04)]">
+            <span className="absolute inset-0" style={{ background: tint }} />
+            {photos[name] && (
+              <img src={photos[name]} alt="" loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
+            )}
+            <span className="absolute inset-x-3 bottom-3 rounded-[18px] bg-white/85 px-4 py-3 text-left font-display text-lg font-semibold backdrop-blur">
+              {name}
+            </span>
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-center text-muted">Tap a dish to see its recipes.</p>
+    </section>
+  );
+}
+
 function Results({ results, query, tired, busy, onPick, onGenerate }) {
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-8">
+    <main className="mx-auto mt-6 max-w-6xl px-4 sm:px-8">
       {results.length === 0 ? (
-        <p className="text-lg">Nothing in the recipe database for “{query}”.</p>
+        <p className="text-center text-lg">Nothing in the recipe database for “{query}”.</p>
       ) : (
-        <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {results.map((r) => (
             <li key={r.id}>
               <button onClick={() => onPick(r)}
-                className="group block w-full overflow-hidden rounded-[2rem] bg-milk text-left">
-                {r.thumbnail && (
-                  <img src={r.thumbnail} alt="" loading="lazy"
-                    className="aspect-[4/3] w-full object-cover transition duration-500 group-hover:scale-105" />
-                )}
+                className="group block w-full overflow-hidden rounded-[28px] bg-white text-left">
+                <span className="block aspect-[4/3] overflow-hidden bg-line">
+                  {r.thumbnail && (
+                    <img src={r.thumbnail} alt="" loading="lazy"
+                      className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                  )}
+                </span>
                 <span className="block px-5 py-4">
-                  <span className="block font-display text-xl">{r.name}</span>
-                  <span className="text-sm text-fig/60">{r.description}</span>
+                  <span className="block font-display text-xl font-semibold tracking-tight">{r.name}</span>
+                  <span className="text-sm text-muted">{r.description}</span>
                 </span>
               </button>
             </li>
@@ -118,12 +199,12 @@ function Results({ results, query, tired, busy, onPick, onGenerate }) {
         </ul>
       )}
 
-      <div className="mt-8">
+      <div className="mt-8 text-center">
         {tired ? (
-          <p className="inline-block rounded-full bg-milk px-6 py-3 text-raspberry">{tired}</p>
+          <p className="inline-block rounded-full bg-white px-6 py-3 text-orchid">{tired}</p>
         ) : (
           <button onClick={onGenerate} disabled={!!busy}
-            className="rounded-full border-2 border-dashed border-raspberry/50 px-6 py-3 text-raspberry hover:border-raspberry disabled:opacity-60">
+            className="min-h-12 rounded-full border-2 border-dashed border-orchid/40 px-6 text-orchid hover:border-orchid disabled:opacity-60">
             {results.length === 0 ? "Write one with AI instead" : "Not quite it? Write one with AI"}
           </button>
         )}
