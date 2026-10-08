@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { searchRecipes, generateRecipe } from "./api.js";
+import { searchRecipes, generateRecipe, polishRecipe } from "./api.js";
 import RecipeView from "./RecipeView.jsx";
 
 export default function App() {
@@ -10,6 +10,7 @@ export default function App() {
   const [busy, setBusy] = useState("");           // what we're waiting for, shown to the user
   const [error, setError] = useState("");
   const [tired, setTired] = useState("");         // the AI limit message, kept separate on purpose
+  const [notice, setNotice] = useState("");       // explains where the open recipe came from
 
   async function onSearch(event) {
     event.preventDefault();
@@ -17,25 +18,48 @@ export default function App() {
     if (!q) return;
     setRecipe(null);
     setError("");
+    setNotice("");
     setBusy("Looking through the recipe box...");
+    let found;
     try {
-      setResults(await searchRecipes(q));
+      found = await searchRecipes(q);
+      setResults(found);
       setSearched(q);
     } catch (err) {
       setError(err.message);
+      setBusy("");
+      return;
+    }
+    // Nothing in the database: go straight to the AI instead of waiting for a click.
+    if (found.length === 0) await generate(q, `Nothing in the recipe database for “${q}”, so an AI wrote this one.`);
+    else setBusy("");
+  }
+
+  async function generate(q, note = "") {
+    setError("");
+    setBusy("Writing a recipe for " + q + ". This takes a few seconds...");
+    try {
+      setRecipe(await generateRecipe(q));
+      setNotice(note);
+    } catch (err) {
+      if (err.status === 429) setTired(err.message);
+      else setError(err.message);
     } finally {
       setBusy("");
     }
   }
 
-  async function onGenerate() {
+  // Database recipes are rewritten by the AI before they're shown. If that fails for any
+  // reason (limits, no key, AI error), the original still opens, so the user isn't stuck.
+  async function onPick(picked) {
     setError("");
-    setBusy("Writing a recipe for " + searched + ". This takes a few seconds...");
+    setNotice("");
+    setBusy("Tidying up " + picked.name + "...");
     try {
-      setRecipe(await generateRecipe(searched));
-    } catch (err) {
-      if (err.status === 429) setTired(err.message);
-      else setError(err.message);
+      setRecipe(await polishRecipe(picked.id));
+    } catch {
+      setRecipe(picked);
+      setNotice("Couldn't tidy this recipe up right now, so here it is as the database has it.");
     } finally {
       setBusy("");
     }
@@ -72,14 +96,14 @@ export default function App() {
             </button>
           </form>
 
-          <p role="status" className="mt-4 min-h-6 text-fig/70">{busy}</p>
+          <p role="status" className="mt-4 min-h-6 text-fig/70">{busy || notice}</p>
           {error && <p className="text-raspberry">{error}</p>}
         </div>
       </header>
 
       {!compact && results !== null && (
         <Results results={results} query={searched} tired={tired} busy={busy}
-          onPick={setRecipe} onGenerate={onGenerate} />
+          onPick={onPick} onGenerate={() => generate(searched)} />
       )}
 
       {compact && <RecipeView key={recipe.id || recipe.name} recipe={recipe} />}
@@ -102,8 +126,8 @@ function Results({ results, query, tired, busy, onPick, onGenerate }) {
         <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {results.map((r) => (
             <li key={r.id}>
-              <button onClick={() => onPick(r)}
-                className="group block w-full overflow-hidden rounded-[2rem] bg-milk text-left">
+              <button onClick={() => onPick(r)} disabled={!!busy}
+                className="group block w-full overflow-hidden rounded-[2rem] bg-milk text-left disabled:opacity-60">
                 {r.thumbnail && (
                   <img src={r.thumbnail} alt="" loading="lazy"
                     className="aspect-[4/3] w-full object-cover transition duration-500 group-hover:scale-105" />

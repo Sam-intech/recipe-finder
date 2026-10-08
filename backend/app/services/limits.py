@@ -12,14 +12,13 @@ Limitations, on purpose for now:
 - It assumes one server process. Two processes would each keep their own counts.
 """
 
-import os
 import threading
 import time
 from collections import OrderedDict, deque
 from datetime import datetime, timezone
 
-DAILY_CAP = int(os.environ.get("AI_DAILY_CAP", "20"))
-PER_IP_LIMIT = int(os.environ.get("AI_PER_IP_LIMIT", "5"))
+from app.config import settings
+
 PER_IP_WINDOW_SECONDS = 60 * 60
 CACHE_MAX_ENTRIES = 500
 
@@ -39,7 +38,7 @@ class AIGuard:
   # FastAPI runs normal `def` endpoints in a thread pool, so two requests can touch these
   # counters at the same moment. The lock makes "check then count" happen as one step.
 
-  def __init__(self, daily_cap=DAILY_CAP, per_ip_limit=PER_IP_LIMIT,
+  def __init__(self, daily_cap=20, per_ip_limit=5,
                window_seconds=PER_IP_WINDOW_SECONDS, clock=time.time):
     self.daily_cap = daily_cap
     self.per_ip_limit = per_ip_limit
@@ -51,14 +50,17 @@ class AIGuard:
     self._day = None
     self._calls_today = 0
 
-  def cached(self, query: str):
+  # `kind` keeps different AI jobs apart, so a typed dish name can never collide with,
+  # say, the polished version of database recipe 52771.
+
+  def cached(self, query: str, kind: str = "generate"):
     """Return the stored answer, or _MISSING if this dish hasn't been generated yet."""
     with self._lock:
-      return self._cache.get(normalise(query), _MISSING)
+      return self._cache.get((kind, normalise(query)), _MISSING)
 
-  def remember(self, query: str, recipe) -> None:
+  def remember(self, query: str, recipe, kind: str = "generate") -> None:
     with self._lock:
-      self._cache[normalise(query)] = recipe
+      self._cache[(kind, normalise(query))] = recipe
       if len(self._cache) > CACHE_MAX_ENTRIES:
         self._cache.popitem(last=False)  # Drop the oldest entry.
 
@@ -82,4 +84,4 @@ class AIGuard:
 
 
 MISSING = _MISSING
-guard = AIGuard()
+guard = AIGuard(daily_cap=settings.ai_daily_cap, per_ip_limit=settings.ai_per_ip_limit)

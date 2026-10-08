@@ -1,5 +1,16 @@
+# Secrets: real env files stay local. The .env.example templates are committed.
 .env
+.env.*
+!.env.example
+
+# Python (backend)
 .venv/
 __pycache__/
 .pytest_cache/
+
+# Node (frontend)
 node_modules/
+dist/
+
+# OS / editor
+.DS_Store

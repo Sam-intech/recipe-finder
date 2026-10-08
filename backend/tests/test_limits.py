@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.limits import AIGuard, LimitReached, MISSING
+from app.services.limits import AIGuard, LimitReached, MISSING
 # =================================================================================================
 
 
@@ -61,3 +61,10 @@ def test_cache_stores_not_a_dish():
   assert guard.cached("rock") is MISSING
   guard.remember("rock", None)
   assert guard.cached(" ROCK ") is None
+
+
+def test_cache_kinds_do_not_collide():
+  guard = AIGuard()
+  guard.remember("52771", "polished", kind="polish")
+  assert guard.cached("52771") is MISSING
+  assert guard.cached("52771", kind="polish") == "polished"

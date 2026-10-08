@@ -10,6 +10,7 @@ export default function RecipeView({ recipe }) {
   const [error, setError] = useState("");
 
   const isAI = recipe.source === "ai";
+  const isPolished = recipe.source === "polished";
   const link = safeLink(recipe.source_url) || safeLink(recipe.page_url);
   const toBuy = recipe.ingredients.length - have.size;
 
@@ -59,6 +60,12 @@ export default function RecipeView({ recipe }) {
         <p className="mx-auto mt-6 max-w-5xl px-4 text-fig/80 sm:px-8">
           An AI wrote this recipe. It isn't from the recipe database, so check quantities,
           cooking times and allergens before you rely on it.
+        </p>
+      )}
+      {isPolished && (
+        <p className="mx-auto mt-6 max-w-5xl px-4 text-fig/80 sm:px-8">
+          This recipe is from the recipe database, rewritten by an AI to make it easier to follow.
+          Check quantities, cooking times and allergens, and compare with the original linked below.
         </p>
       )}
 

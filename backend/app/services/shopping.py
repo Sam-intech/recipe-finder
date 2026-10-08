@@ -3,7 +3,7 @@
 import csv
 import io
 
-from app.core.recipes import Ingredient, normalise
+from app.services.recipes import Ingredient, normalise
 # =================================================================================
 
 

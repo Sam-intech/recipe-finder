@@ -1,7 +1,11 @@
 // Every call to the FastAPI backend goes through here, so components never deal with fetch.
 
-async function request(url, options = {}) {
-  const response = await fetch(url, options);
+// Where the API lives. Set VITE_API_BASE_URL at build time for production (see .env.example).
+// Left empty in development, so requests go to /api and Vite forwards them to uvicorn.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+
+async function request(path, options = {}) {
+  const response = await fetch(API_BASE + path, options);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const error = new Error(body.detail || "Something went wrong. Try again.");
@@ -24,6 +28,12 @@ export async function searchRecipes(query) {
 
 export async function generateRecipe(query) {
   const response = await request("/api/recipes/generate", json({ q: query }));
+  return (await response.json()).recipe;
+}
+
+// Database recipes go through the AI too, which rewrites them to read clearly.
+export async function polishRecipe(id) {
+  const response = await request("/api/recipes/polish", json({ id }));
   return (await response.json()).recipe;
 }
 
