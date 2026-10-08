@@ -68,11 +68,20 @@
 
   function setStatus(message) { $("status").textContent = message; }
 
+  // Shown when the AI limits are reached. Soft and friendly rather than an error box.
+  function showTired(message) {
+    setStatus("");
+    $("results").append(el("p", message,
+      "rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-center text-rose-700"));
+  }
+
   async function api(url, options) {
     const response = await fetch(url, options);
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.detail || "Something went wrong.");
+      const error = new Error(body.detail || "Something went wrong.");
+      error.status = response.status;
+      throw error;
     }
     return response;
   }
@@ -121,6 +130,11 @@
         const data = await response.json();
         showRecipe(data.recipe);
       } catch (error) {
+        if (error.status === 429) {
+          showTired(error.message);
+          button.remove();  // Retrying won't help until the limit resets.
+          return;
+        }
         setStatus(error.message);
         button.disabled = false;
       }

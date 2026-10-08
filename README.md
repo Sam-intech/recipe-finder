@@ -28,6 +28,8 @@ a 400 can mean the schema was rejected, and 429 means quota or rate limit.
 - `THEMEALDB_API_KEY`: defaults to the dev key `1` (dev/educational use only; a public app needs a paid key).
 - `GEMINI_API_KEY`: enables AI generation. Without it the button returns a clear "not set up" error.
 - `GEMINI_MODEL`: defaults to `gemini-3.5-flash-lite`. Model names change often; check Google's current list.
+- `AI_DAILY_CAP`: total AI calls allowed per day (UTC), default 20. Repeat dishes come from the cache and don't count.
+- `AI_PER_IP_LIMIT`: AI calls per IP per hour, default 5. Limits and cache are in memory and reset on restart.
 
 ## Layout
 
