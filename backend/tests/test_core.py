@@ -1,5 +1,5 @@
-from app.core.recipes import Ingredient, merge_duplicates, parse_ingredients, parse_meal, parse_steps
-from app.core.shopping import build_shopping_list, to_csv, to_markdown
+from app.services.recipes import Ingredient, merge_duplicates, parse_ingredients, parse_meal, parse_steps
+from app.services.shopping import build_shopping_list, to_csv, to_markdown
 # =================================================================================================
 
 MEAL = {

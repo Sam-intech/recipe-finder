@@ -4,7 +4,7 @@ import { buildShoppingList, downloadList } from "./api.js";
 // Only follow http(s) links from the API, never javascript: or anything else.
 const safeLink = (href) => (/^https?:\/\//.test(href || "") ? href : "");
 
-export default function RecipeView({ recipe }) {
+export default function RecipeView({ recipe, notice }) {
   const [have, setHave] = useState(new Set());
   const [list, setList] = useState(null);
   const [error, setError] = useState("");
@@ -12,6 +12,7 @@ export default function RecipeView({ recipe }) {
   const total = recipe.ingredients.length;
   const toBuy = total - have.size;
   const isAI = recipe.source === "ai";
+  const isPolished = recipe.source === "polished";
   const cuisine = recipe.area || recipe.category;
 
   function toggle(name) {
@@ -57,6 +58,7 @@ export default function RecipeView({ recipe }) {
           <div className="flex flex-wrap gap-2">
             {cuisine && <span className="rounded-full bg-white/15 px-3.5 py-2 text-sm">{cuisine}</span>}
             {isAI && <span className="rounded-full bg-white px-3.5 py-2 text-sm text-orchid">AI-written</span>}
+            {isPolished && <span className="rounded-full bg-white px-3.5 py-2 text-sm text-orchid">Tidied up by AI</span>}
           </div>
           <h1 className="font-display text-[clamp(40px,4.6vw,72px)] font-extrabold leading-[.92] [overflow-wrap:anywhere] tracking-[-.045em]">
             {recipe.name}
@@ -77,6 +79,15 @@ export default function RecipeView({ recipe }) {
             An AI wrote this recipe. It isn't from the recipe database, so check quantities, cooking
             times and allergens before you rely on it.
           </p>
+        )}
+        {isPolished && (
+          <p className="rounded-[24px] bg-white px-6 py-4 text-muted lg:col-span-12">
+            This recipe is from the recipe database, rewritten by an AI to make it easier to follow.
+            Check quantities, cooking times and allergens, and compare with the original linked below.
+          </p>
+        )}
+        {notice && (
+          <p role="status" className="rounded-[24px] bg-white px-6 py-4 text-muted lg:col-span-12">{notice}</p>
         )}
 
         {/* Ingredients tile. */}

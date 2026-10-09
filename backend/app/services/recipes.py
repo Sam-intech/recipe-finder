@@ -1,14 +1,14 @@
 """Recipe fetching and parsing. Plain functions, no web framework."""
 
-import os
 import re
 from dataclasses import dataclass, field
 
 import httpx
+
+from app.config import settings
 # ====================================================================================
 
-API_KEY = os.environ.get("THEMEALDB_API_KEY", "1")  # "1" = dev/educational key only
-BASE_URL = f"https://www.themealdb.com/api/json/v1/{API_KEY}"
+API_ROOT = "https://www.themealdb.com/api/json/v1"
 MAX_INGREDIENT_SLOTS = 20
 
 # Lines like "STEP 1" or "1." on their own are noise, not instructions.
@@ -34,7 +34,7 @@ class Recipe:
   source_url: str = ""
   youtube_url: str = ""
   page_url: str = field(default="")
-  source: str = "database"  # "database" (TheMealDB) or "ai" (generated)
+  source: str = "database"  # "database" (TheMealDB), "ai" (generated) or "polished" (database + AI rewrite)
 
 
 def normalise(name: str) -> str:
@@ -107,7 +107,8 @@ def parse_meal(meal: dict) -> Recipe:
 
 
 def _get_meals(endpoint: str, params: dict) -> list[dict]:
-  response = httpx.get(f"{BASE_URL}/{endpoint}", params=params, timeout=10.0)
+  url = f"{API_ROOT}/{settings.themealdb_api_key}/{endpoint}"
+  response = httpx.get(url, params=params, timeout=10.0)
   response.raise_for_status()
   # "meals" is null when nothing matches.
   return response.json().get("meals") or []

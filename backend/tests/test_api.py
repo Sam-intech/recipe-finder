@@ -1,9 +1,12 @@
 import httpx
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 
-from app.core import ai_recipes, limits, recipes
-from app.core.recipes import Ingredient, Recipe
+from app.services import ai_recipes, limits, recipes
+from app.services.recipes import Ingredient, Recipe
+from app.api.deps import client_ip
+from app.config import settings
 from app.main import app
 # =================================================================================================
 
@@ -41,6 +44,8 @@ LIST_BODY = {
 def fake_get_meals(endpoint, params):
   if endpoint == "search.php":
     return [MEAL] if params["s"].lower() == "arrabiata" else []
+  if endpoint == "lookup.php":
+    return [MEAL] if params["i"] == MEAL["idMeal"] else []
   raise AssertionError(endpoint)
 
 
@@ -138,10 +143,33 @@ def test_generate_validates_input():
   assert client.post("/api/recipes/generate", json={"q": "x" * 101}).status_code == 422
 
 
-def test_index_page_served():
-  response = client.get("/")
-  assert response.status_code == 200
-  assert "Recipe Finder" in response.text
+def test_health():
+  assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_cors_allows_configured_origin_only():
+  allowed = settings.cors_origins[0]
+  ok = client.get("/health", headers={"Origin": allowed})
+  assert ok.headers["access-control-allow-origin"] == allowed
+  blocked = client.get("/health", headers={"Origin": "https://evil.example"})
+  assert "access-control-allow-origin" not in blocked.headers
+
+
+def fake_request(peer, forwarded=None):
+  headers = [(b"x-forwarded-for", forwarded.encode())] if forwarded else []
+  return Request({"type": "http", "headers": headers, "client": (peer, 1234)})
+
+
+def test_client_ip_ignores_forwarded_header_by_default(monkeypatch):
+  monkeypatch.setattr(settings, "trusted_proxy_hops", 0)
+  assert client_ip(fake_request("10.0.0.1", "6.6.6.6")) == "10.0.0.1"
+
+
+def test_client_ip_takes_the_entry_the_trusted_proxy_added(monkeypatch):
+  monkeypatch.setattr(settings, "trusted_proxy_hops", 1)
+  # The client faked "6.6.6.6"; the proxy appended the real address on the right.
+  assert client_ip(fake_request("10.0.0.1", "6.6.6.6, 203.0.113.7")) == "203.0.113.7"
+  assert client_ip(fake_request("10.0.0.1")) == "10.0.0.1"
 
 
 # --- AI protection -------------------------------------------------------------------------------
@@ -186,3 +214,51 @@ def test_ai_failure_is_not_cached(monkeypatch):
   calls = counting_generator(monkeypatch)
   assert client.post("/api/recipes/generate", json={"q": "pho"}).status_code == 200
   assert len(calls) == 1
+
+
+# --- Polishing database recipes ------------------------------------------------------------------
+
+def counting_polisher(monkeypatch):
+  calls = []
+  def fake(original):
+    calls.append(original.id)
+    return Recipe(**{**original.__dict__, "steps": ["Tidy step."], "source": "polished"})
+  monkeypatch.setattr(ai_recipes, "polish_recipe", fake)
+  monkeypatch.setattr(recipes, "_get_meals", fake_get_meals)
+  return calls
+
+
+def test_polish_success_is_cached(monkeypatch):
+  calls = counting_polisher(monkeypatch)
+  for _ in range(2):
+    body = client.post("/api/recipes/polish", json={"id": "52771"}).json()
+    assert body["recipe"]["source"] == "polished"
+    assert body["recipe"]["steps"] == ["Tidy step."]
+  assert calls == ["52771"]
+
+
+def test_polish_unknown_id_is_404_and_spends_no_slot(monkeypatch):
+  calls = counting_polisher(monkeypatch)
+  assert client.post("/api/recipes/polish", json={"id": "999"}).status_code == 404
+  assert calls == []
+  assert limits.guard._calls_today == 0
+
+
+def test_polish_rejects_non_numeric_id():
+  assert client.post("/api/recipes/polish", json={"id": "ai-jollof"}).status_code == 422
+
+
+def test_polish_and_generate_share_the_limits(monkeypatch):
+  counting_polisher(monkeypatch)
+  counting_generator(monkeypatch)
+  for i in range(5):
+    assert client.post("/api/recipes/generate", json={"q": f"dish {i}"}).status_code == 200
+  assert client.post("/api/recipes/polish", json={"id": "52771"}).status_code == 429
+
+
+def test_polish_failure_is_502(monkeypatch):
+  monkeypatch.setattr(recipes, "_get_meals", fake_get_meals)
+  def failed(original):
+    raise ai_recipes.AIRecipeError("boom")
+  monkeypatch.setattr(ai_recipes, "polish_recipe", failed)
+  assert client.post("/api/recipes/polish", json={"id": "52771"}).status_code == 502
