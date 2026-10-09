@@ -40,7 +40,7 @@ export default function App() {
       return;
     }
     // Nothing in the database: go straight to the AI instead of waiting for a click.
-    if (found.length === 0) await generate(q, `Nothing in the recipe database for “${q}”, so an AI wrote this one.`);
+    if (found.length === 0) await generate(q, `There's no ready-made recipe for “${q}”, so an AI wrote this one.`);
     else setBusy("");
   }
 
@@ -68,7 +68,7 @@ export default function App() {
       setRecipe(await polishRecipe(picked.id));
     } catch {
       setRecipe(picked);
-      setNotice("Couldn't tidy this recipe up right now, so here it is as the database has it.");
+      setNotice("Couldn't tidy this recipe up right now, so here it is as originally written.");
     } finally {
       setBusy("");
     }
@@ -117,8 +117,6 @@ export default function App() {
       )}
 
       <footer className="mx-auto max-w-6xl px-4 py-14 text-sm text-muted sm:px-8">
-        Database recipes and photos come from{" "}
-        <a className="underline" href="https://www.themealdb.com/" target="_blank" rel="noopener">TheMealDB</a>.
         Recipes marked as AI-written are made by an AI model. Always check labels for allergens.
       </footer>
     </div>
@@ -200,7 +198,7 @@ function Results({ results, query, tired, busy, onPick, onGenerate }) {
   return (
     <main className="mx-auto mt-6 max-w-6xl px-4 sm:px-8">
       {results.length === 0 ? (
-        <p className="text-center text-lg">Nothing in the recipe database for “{query}”.</p>
+        <p className="text-center text-lg">There's no ready-made recipe for “{query}”.</p>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {results.map((r) => (

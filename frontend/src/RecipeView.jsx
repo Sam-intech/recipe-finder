@@ -76,13 +76,13 @@ export default function RecipeView({ recipe, notice }) {
 
         {isAI && (
           <p className="rounded-[24px] bg-white px-6 py-4 text-muted lg:col-span-12">
-            An AI wrote this recipe. It isn't from the recipe database, so check quantities, cooking
-            times and allergens before you rely on it.
+            An AI wrote this recipe, so check quantities, cooking times and allergens before you
+            rely on it.
           </p>
         )}
         {isPolished && (
           <p className="rounded-[24px] bg-white px-6 py-4 text-muted lg:col-span-12">
-            This recipe is from the recipe database, rewritten by an AI to make it easier to follow.
+            An AI rewrote this recipe to make it easier to follow.
             Check quantities, cooking times and allergens, and compare with the original linked below.
           </p>
         )}
