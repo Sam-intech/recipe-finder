@@ -56,3 +56,10 @@ export async function downloadList(recipe, have, format) {
   anchor.click();
   URL.revokeObjectURL(url);
 }
+
+// Shops near the user that are likely to sell the items. Sent as POST so the position stays
+// out of URLs and server logs.
+export async function findStores({ lat, lon }, items) {
+  const response = await request("/api/stores", json({ lat, lon, items }));
+  return response.json();
+}

@@ -1,6 +1,8 @@
 """Request bodies. Validation here keeps bad input away from the services and the paid AI."""
 
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.services import ai_recipes
 
@@ -26,3 +28,11 @@ class PolishRequest(BaseModel):
   # Only the database id. The server fetches the recipe itself rather than trusting
   # whatever a client sends to the AI.
   id: str = Field(pattern=r"^\d{1,10}$")
+
+
+class StoresRequest(BaseModel):
+  # POST, not GET, so the user's position never ends up in a URL or in access logs.
+  lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
+  lon: float = Field(ge=-180, le=180, allow_inf_nan=False)
+  items: list[Annotated[str, StringConstraints(min_length=1, max_length=200)]] = Field(
+    min_length=1, max_length=60)

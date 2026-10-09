@@ -7,7 +7,7 @@ HTTPS, which is why CORS is configured here.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import recipes, shopping
+from app.api import recipes, shopping, stores
 from app.config import settings
 
 
@@ -21,6 +21,7 @@ def create_app() -> FastAPI:
   )
   app.include_router(recipes.router)
   app.include_router(shopping.router)
+  app.include_router(stores.router)
 
   @app.get("/health", tags=["meta"])
   def health():
