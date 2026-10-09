@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { buildShoppingList, downloadList } from "./api.js";
+import StoreFinder from "./StoreFinder.jsx";
 
 // Only follow http(s) links from the API, never javascript: or anything else.
 const safeLink = (href) => (/^https?:\/\//.test(href || "") ? href : "");
@@ -141,6 +142,7 @@ export default function RecipeView({ recipe, notice }) {
               </div>
             </div>
           )}
+          {list && list.length > 0 && <StoreFinder items={list.map((item) => item.name)} />}
           {error && <p className="mt-3 text-orchid">{error}</p>}
         </div>
 

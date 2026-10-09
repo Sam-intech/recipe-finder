@@ -27,6 +27,13 @@ class Settings(BaseSettings):
   ai_daily_cap: int = Field(default=20, ge=0)
   ai_per_ip_limit: int = Field(default=5, ge=0)
 
+  # Store finder: shop data from OpenStreetMap through the free Overpass API. It is a shared
+  # public service, so keep the limit modest and give it a way to contact you (see README).
+  overpass_url: str = "https://overpass-api.de/api/interpreter"
+  overpass_user_agent: str = "recipe-finder (set OVERPASS_USER_AGENT to include your contact)"
+  store_radius_m: int = Field(default=5000, ge=500, le=25000)
+  store_per_ip_limit: int = Field(default=20, ge=0)
+
   # Websites allowed to call this API from a browser, comma separated, e.g.
   # "https://recipes.example.com". The default is the Vite dev server.
   cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
