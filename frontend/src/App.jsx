@@ -182,7 +182,7 @@ function Ribbon({ onPick }) {
             className="group relative w-48 shrink-0 snap-center overflow-hidden rounded-[28px] transition-transform duration-500 ease-out sm:w-56 sm:[transform:rotate(var(--tilt))] sm:hover:[transform:rotate(0deg)_translateY(-18px)_scale(1.04)]">
             <span className="absolute inset-0" style={{ background: tint }} />
             {photos[name] && (
-              <img src={photos[name]} alt="" loading="lazy"
+              <img src={photos[name]} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }}
                 className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
             )}
             <span className="absolute inset-x-3 bottom-3 rounded-[18px] bg-white/85 px-4 py-3 text-left font-display text-lg font-semibold backdrop-blur">
@@ -209,7 +209,7 @@ function Results({ results, query, tired, busy, onPick, onGenerate }) {
                 className="group block w-full overflow-hidden rounded-[28px] bg-white text-left disabled:opacity-60">
                 <span className="block aspect-[4/3] overflow-hidden bg-line">
                   {r.thumbnail && (
-                    <img src={r.thumbnail} alt="" loading="lazy"
+                    <img src={r.thumbnail} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }}
                       className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
                   )}
                 </span>
