@@ -44,7 +44,7 @@ export default function RecipeView({ recipe }) {
         {/* Photo tile. AI recipes have no photo, so they get a tinted tile instead. */}
         <div className="rise relative min-h-80 overflow-hidden rounded-[36px] bg-[#d9e3d2] lg:col-span-7 lg:min-h-[480px]">
           {recipe.thumbnail ? (
-            <img src={recipe.thumbnail} alt={recipe.name} className="absolute inset-0 h-full w-full object-cover" />
+            <img src={recipe.thumbnail} alt={recipe.name} onError={(e) => { e.currentTarget.style.display = "none"; }} className="absolute inset-0 h-full w-full object-cover" />
           ) : (
             <span className="absolute inset-0 flex items-center justify-center p-10 text-center font-display text-2xl text-ink/50">
               No photo for AI-written recipes
