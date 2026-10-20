@@ -1,14 +1,33 @@
 import { useEffect, useRef, useState } from "react";
-import { downloadList } from "./api.js";
+import { downloadList, findStores } from "./api.js";
+import { FindShopsCard, ShopChip, ShopPanel, formatDistance, getPosition, locationMessage } from "./StoreFinder.jsx";
 
 // Only follow http(s) links from the API, never javascript: or anything else.
 const safeLink = (href) => (/^https?:\/\//.test(href || "") ? href : "");
+
+// Same as the backend's normalise(), so names match the store finder's answer.
+const keyOf = (name) => name.toLowerCase().split(/\s+/).filter(Boolean).join(" ");
+
+// The store finder's per-item answer, by ingredient key. Each entry keeps the radius it was
+// searched with, because "Search a wider area" re-searches one item further out.
+function indexShops(items, radius) {
+  const shops = {};
+  for (const item of items) shops[keyOf(item.name)] = { ...item, radius };
+  return shops;
+}
 
 export default function RecipeView({ recipe, notice }) {
   const [have, setHave] = useState(new Set());
   const [stage, setStage] = useState("shop");  // "shop" while buying, "cook" once everything is in
   const [kitchenOpen, setKitchenOpen] = useState(false);
   const [error, setError] = useState("");
+  // Store finder: one location and one search for the whole recipe, then "Not here" steps
+  // through each item's shops in `route` without asking the server again.
+  const [finder, setFinder] = useState({ working: false, error: "", position: null, shops: null });
+  const [route, setRoute] = useState({});      // ingredient key -> index of the shop shown
+  const [widened, setWidened] = useState({});  // ingredient key -> true once searched further
+  const [selected, setSelected] = useState(null);  // ingredient name whose shops are open
+  const [panelError, setPanelError] = useState("");
   const headingRef = useRef(null);
   const firstRender = useRef(true);
 
@@ -19,6 +38,9 @@ export default function RecipeView({ recipe, notice }) {
   const isPolished = recipe.source === "polished";
   const cuisine = recipe.area || recipe.category;
   const link = safeLink(recipe.source_url) || safeLink(recipe.page_url);
+  // The panel only shows for an item still to get; ticking it elsewhere closes the panel.
+  const openItem = toGet.find((item) => item.name === selected);
+  const openShopsEntry = openItem && finder.shops?.[keyOf(openItem.name)];
 
   // When the stage changes, go to the top and move focus to the new heading so screen reader
   // and keyboard users land in the right place. Skipped on first render.
@@ -31,6 +53,66 @@ export default function RecipeView({ recipe, notice }) {
     headingRef.current?.focus();
   }, [stage]);
 
+  async function findShops(openName) {
+    setFinder((f) => ({ ...f, working: true, error: "" }));
+    let position;
+    try {
+      position = await getPosition();
+    } catch (err) {
+      setFinder((f) => ({ ...f, working: false, error: locationMessage(err) }));
+      return;
+    }
+    try {
+      // Every ingredient, not just what's left, so unticking something later still works.
+      const result = await findStores(position, recipe.ingredients.map((item) => item.name));
+      setFinder({ working: false, error: "", position, shops: indexShops(result.items, result.radius_m) });
+      setRoute({});
+      setWidened({});
+      if (openName) setSelected(openName);
+    } catch (err) {
+      setFinder((f) => ({ ...f, working: false, error: err.message }));
+    }
+  }
+
+  function openShops(name) {
+    setPanelError("");
+    if (finder.shops) setSelected(selected === name ? null : name);
+    else if (!finder.working) findShops(name);
+  }
+
+  function chipLabel(name) {
+    if (finder.working) return "Finding shops...";
+    const entry = finder.shops?.[keyOf(name)];
+    if (!entry) return "Where to buy?";
+    const shop = entry.stores[route[keyOf(name)] || 0];
+    return shop ? `${shop.name} · ${formatDistance(shop.distance_m)}` : "None found nearby";
+  }
+
+  function notHere(name) {
+    const key = keyOf(name);
+    setRoute({ ...route, [key]: (route[key] || 0) + 1 });
+  }
+
+  function gotIt(name) {
+    setHave(new Set(have).add(name));
+    setSelected(null);
+  }
+
+  async function searchWider(name) {
+    const key = keyOf(name);
+    setPanelError("");
+    setFinder((f) => ({ ...f, working: true }));
+    try {
+      const result = await findStores(finder.position, [name], true);
+      setFinder((f) => ({ ...f, working: false, shops: { ...f.shops, ...indexShops(result.items, result.radius_m) } }));
+      setRoute((r) => ({ ...r, [key]: 0 }));
+      setWidened((w) => ({ ...w, [key]: true }));
+    } catch (err) {
+      setFinder((f) => ({ ...f, working: false }));
+      setPanelError(err.message);
+    }
+  }
+
   function toggle(name) {
     const next = new Set(have);
     next.has(name) ? next.delete(name) : next.add(name);
@@ -40,6 +122,7 @@ export default function RecipeView({ recipe, notice }) {
   // "Ingredients complete" means everything is in the kitchen, whatever was ticked before.
   function complete() {
     setHave(new Set(recipe.ingredients.map((item) => item.name)));
+    setSelected(null);
     setStage("cook");
   }
 
@@ -133,8 +216,21 @@ export default function RecipeView({ recipe, notice }) {
             <IngredientsTile
               toGet={toGet} inKitchen={inKitchen}
               kitchenOpen={kitchenOpen} onToggleKitchen={() => setKitchenOpen(!kitchenOpen)}
-              onToggle={toggle} onComplete={complete} onDownload={download} error={error} />
-            <LockedCookMode steps={recipe.steps} />
+              onToggle={toggle} onComplete={complete} onDownload={download} error={error}
+              finder={finder} onFindShops={() => findShops()} selected={openItem?.name}
+              chipLabel={chipLabel} onOpenShops={openShops} />
+            <div className="flex flex-col gap-4 lg:col-span-7">
+              {openItem && openShopsEntry && (
+                <ShopPanel key={openItem.name}
+                  item={{ ...openItem, note: openShopsEntry.note }}
+                  shops={openShopsEntry.stores} index={route[keyOf(openItem.name)] || 0}
+                  position={finder.position} radius={openShopsEntry.radius}
+                  widened={!!widened[keyOf(openItem.name)]} working={finder.working} error={panelError}
+                  onNotHere={() => notHere(openItem.name)} onGotIt={() => gotIt(openItem.name)}
+                  onWider={() => searchWider(openItem.name)} onClose={() => setSelected(null)} />
+              )}
+              <LockedCookMode steps={recipe.steps} />
+            </div>
           </>
         ) : (
           <>
@@ -149,7 +245,8 @@ export default function RecipeView({ recipe, notice }) {
 
 // Two lists: "Still to get" (live, this is the shopping list) and a collapsed "In your kitchen".
 // Ticking moves an ingredient between them; unticking moves it back.
-function IngredientsTile({ toGet, inKitchen, kitchenOpen, onToggleKitchen, onToggle, onComplete, onDownload, error }) {
+function IngredientsTile({ toGet, inKitchen, kitchenOpen, onToggleKitchen, onToggle, onComplete, onDownload, error,
+                          finder, onFindShops, selected, chipLabel, onOpenShops }) {
   return (
     <div className="rise flex flex-col gap-6 rounded-[36px] bg-white p-6 [animation-delay:160ms] sm:p-8 lg:col-span-5">
       <div>
@@ -166,9 +263,13 @@ function IngredientsTile({ toGet, inKitchen, kitchenOpen, onToggleKitchen, onTog
         </div>
         {toGet.length > 0 ? (
           <>
+            {!finder.shops && <FindShopsCard working={finder.working} error={finder.error} onFind={onFindShops} />}
             <ul>
               {toGet.map((item) => (
-                <IngredientRow key={item.name} item={item} owned={false} onToggle={onToggle} />
+                <IngredientRow key={item.name} item={item} owned={false} onToggle={onToggle}>
+                  <ShopChip label={chipLabel(item.name)} selected={selected === item.name}
+                    onClick={() => onOpenShops(item.name)} />
+                </IngredientRow>
               ))}
             </ul>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -237,14 +338,17 @@ function IngredientsTile({ toGet, inKitchen, kitchenOpen, onToggleKitchen, onTog
   );
 }
 
-function IngredientRow({ item, owned, onToggle }) {
+// `children` is the shop button on "Still to get". It sits outside the label, so tapping it
+// doesn't tick the box.
+function IngredientRow({ item, owned, onToggle, children }) {
   return (
-    <li className="border-t border-line">
+    <li className={"border-t border-line " + (children ? "pb-2.5" : "")}>
       <label className="flex min-h-13 cursor-pointer items-center gap-3.5 py-1.5">
         <input type="checkbox" checked={owned} onChange={() => onToggle(item.name)} className="size-5.5 accent-sage" />
         <span className={"flex-1 text-[17px] " + (owned ? "text-muted" : "")}>{item.name}</span>
         <span className="text-right text-muted">{item.measure}</span>
       </label>
+      {children && <div className="flex pl-9">{children}</div>}
     </li>
   );
 }

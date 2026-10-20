@@ -7,7 +7,8 @@ Recipes come from TheMealDB first. If there is no match, an AI model writes one 
 click "none of these" to get an AI recipe. Database recipes are rewritten by the AI before they
 are shown, so the steps and quantities read clearly; if that fails, the original is shown instead.
 Both AI paths share the same cache, per-IP limit and daily cap.
-No location, shops or prices yet (stages 2 and 3).
+Tap "Find shops near me" and each item still to get shows the nearest shop likely to sell it,
+with an in-app map. "Not here" moves that item on to the next nearest shop. No prices yet (stage 3).
 
 ## Repository layout
 
@@ -110,8 +111,19 @@ this is the first real test of the query. If it fails or returns nothing, copy t
 
 ## Store finder
 
-"Find stores near me" appears under the shopping list. It uses the browser's location, then the
-API (`POST /api/stores`) asks OpenStreetMap for shops nearby.
+"Find shops near me" sits at the top of "Still to get". It uses the browser's location, then the
+API (`POST /api/stores`) asks OpenStreetMap for shops nearby, once for the whole recipe.
+
+- The answer has `items`: for each ingredient, the shops likely to sell it, nearest first. Each
+  item's button shows its first shop; "Not here" steps to the next one in the browser, without
+  another search. When an item runs out of shops, "Search a wider area" searches that item
+  again with `"wider": true` (twice the radius, at most 25 km). `groups` is the same data by
+  store type.
+- The map in the shop panel uses OpenStreetMap's own tile server (through Leaflet). The line on
+  it is straight, not a route; turn-by-turn opens the phone's maps (a Google Maps link). OSM's
+  tile servers are for light use only: read the tile usage policy
+  (operations.osmfoundation.org/policies/tiles) before launch, and switch to a tile provider
+  if traffic grows.
 
 - Items are sorted into supermarket, butcher, fishmonger and specialist by keyword
   (`classify` in `app/services/stores.py`). Edit the word lists there when an item lands in the

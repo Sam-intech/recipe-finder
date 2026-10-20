@@ -36,3 +36,5 @@ class StoresRequest(BaseModel):
   lon: float = Field(ge=-180, le=180, allow_inf_nan=False)
   items: list[Annotated[str, StringConstraints(min_length=1, max_length=200)]] = Field(
     min_length=1, max_length=60)
+  # True when every nearby shop said "Not here": search twice as far.
+  wider: bool = False

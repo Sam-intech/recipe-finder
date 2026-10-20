@@ -58,8 +58,8 @@ export async function downloadList(recipe, have, format) {
 }
 
 // Shops near the user that are likely to sell the items. Sent as POST so the position stays
-// out of URLs and server logs.
-export async function findStores({ lat, lon }, items) {
-  const response = await request("/api/stores", json({ lat, lon, items }));
+// out of URLs and server logs. `wider` searches twice as far, once nearby shops run out.
+export async function findStores({ lat, lon }, items, wider = false) {
+  const response = await request("/api/stores", json({ lat, lon, items, wider }));
   return response.json();
 }

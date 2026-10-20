@@ -14,7 +14,8 @@ router = APIRouter(prefix="/api/stores", tags=["stores"])
 @router.post("")
 def nearby(body: StoresRequest, request: Request):
   try:
-    result = stores.find_stores(body.lat, body.lon, body.items, client_ip(request))
+    result = stores.find_stores(body.lat, body.lon, body.items, client_ip(request),
+                                wider=body.wider)
   except stores.RateLimited:
     raise HTTPException(status_code=429, detail="Too many store searches. Try again in a while.")
   except httpx.HTTPError:

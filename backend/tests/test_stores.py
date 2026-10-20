@@ -243,3 +243,48 @@ def test_endpoint_validates_input(bad):
 def test_location_is_not_in_the_url():
   # GET must not exist: coordinates in a URL end up in logs.
   assert client.get(f"/api/stores?lat={LAT}&lon={LON}").status_code == 405
+
+
+# --- shops per item, for "Not here" re-routing ---------------------------------------------------
+
+def test_each_item_gets_its_shops_nearest_first():
+  result = stores.find_stores(LAT, LON, ["Chicken thighs", "Garlic", "Egusi"], "ip",
+                              fetch=fake_fetch)
+  by_name = {item["name"]: item for item in result["items"]}
+  chicken = [s["name"] for s in by_name["Chicken thighs"]["stores"]]
+  # Butchers and supermarkets both sell chicken, mixed together by distance.
+  assert chicken == ["Mapped As A Building", "Near Supermarket", "Jones & Sons",
+                     "Mid Supermarket", "Far Supermarket"]
+  assert by_name["Chicken thighs"]["stores"][2]["kind"] == "Butcher"
+  assert by_name["Chicken thighs"]["category"] == "butcher"
+  # Specialist items only go to specialist shops, and say how they were found.
+  assert [s["name"] for s in by_name["Egusi"]["stores"]] == ["Lagos Afro Foods"]
+  assert by_name["Egusi"]["note"] == stores.NOTES["specialist"]
+
+
+def test_items_keep_list_order_and_drop_duplicates():
+  result = stores.find_stores(LAT, LON, ["Garlic", "Salmon", "garlic"], "ip", fetch=fake_fetch)
+  assert [item["name"] for item in result["items"]] == ["Garlic", "Salmon"]
+  salmon = result["items"][1]["stores"]
+  assert salmon[0]["kind"] == "Supermarket" and "The Fish Shop" in [s["name"] for s in salmon]
+
+
+def test_wider_search_doubles_the_radius_and_is_cached_separately():
+  normal = stores.find_stores(LAT, LON, ["Garlic"], "ip", fetch=fake_fetch)
+  wider = stores.find_stores(LAT, LON, ["Garlic"], "ip", fetch=fake_fetch, wider=True)
+  assert wider["radius_m"] == normal["radius_m"] * 2
+  assert "around:10000," in fake_fetch.queries[1]
+  assert len(fake_fetch.queries) == 2
+
+
+def test_wider_search_has_a_ceiling(monkeypatch):
+  monkeypatch.setattr(stores.settings, "store_radius_m", 20000)
+  result = stores.find_stores(LAT, LON, ["Garlic"], "ip", fetch=fake_fetch, wider=True)
+  assert result["radius_m"] == stores.MAX_RADIUS_M
+
+
+def test_endpoint_accepts_wider(monkeypatch):
+  monkeypatch.setattr(stores, "fetch_overpass", fake_fetch)
+  response = client.post("/api/stores", json={**BODY, "wider": True})
+  assert response.status_code == 200 and response.json()["radius_m"] == 10000
+  assert [item["name"] for item in response.json()["items"]] == BODY["items"]

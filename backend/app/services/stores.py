@@ -40,8 +40,16 @@ NOTES = {
   "fishmonger": "Most supermarkets sell these too.",
   "specialist": "Found by shop name, so check they stock what you need before you go.",
 }
+KINDS = {
+  "supermarket": "Supermarket",
+  "butcher": "Butcher",
+  "fishmonger": "Fishmonger",
+  "specialist": "Specialist and world food shop",
+}
 ORDER = ["supermarket", "butcher", "fishmonger", "specialist"]
 PER_CATEGORY = 5
+# "Wider area" doubles the search radius, up to this.
+MAX_RADIUS_M = 25000
 
 # A starter list. Add words as you find items that end up in the wrong group.
 _SPECIALIST_ITEMS = [
@@ -113,6 +121,15 @@ def group_items(ingredients: list[str]) -> dict[str, list[str]]:
     if category != "supermarket":
       groups[category].append(name)
   return groups
+
+
+def categories_for(ingredient: str) -> list[str]:
+  """Every store type likely to sell an ingredient, matching group_items: meat and fish are
+  also sold in supermarkets, specialist items aren't."""
+  category = classify(ingredient)
+  if category in ("butcher", "fishmonger"):
+    return [category, "supermarket"]
+  return [category]
 
 
 def build_query(lat: float, lon: float, categories: set[str], radius_m: int) -> str:
@@ -266,14 +283,42 @@ def fetch_overpass(query: str) -> list[dict]:
   return response.json().get("elements", [])
 
 
+def shops_per_item(ingredients: list[str], stores: dict[str, list[Store]]) -> list[dict]:
+  """For each ingredient, the shops likely to sell it, nearest first. This is the order
+  "Not here" walks through: if the first shop doesn't have it, the next one is suggested."""
+  result = []
+  seen = set()
+  for name in ingredients:
+    key = normalise(name)
+    if not key or key in seen:
+      continue
+    seen.add(key)
+    categories = categories_for(name)
+    ranked = []
+    for category in categories:
+      for store in stores.get(category, []):
+        ranked.append({**asdict(store), "kind": KINDS[category]})
+    ranked.sort(key=lambda s: s["distance_m"])
+    result.append({
+      "name": name,
+      "category": categories[0],
+      "note": NOTES[categories[0]],
+      "stores": ranked,
+    })
+  return result
+
+
 def find_stores(lat: float, lon: float, ingredients: list[str], ip: str,
-                fetch=None, store_guard=None) -> dict:
-  """Groups of nearby shops, one per store type that the list needs."""
+                fetch=None, store_guard=None, wider=False) -> dict:
+  """Nearby shops for a shopping list: grouped by store type, and ranked per item.
+  `wider` doubles the search radius, for when nothing nearby had an item."""
   fetch = fetch or fetch_overpass
   store_guard = store_guard or guard
   items = group_items(ingredients)
   wanted = {category for category, names in items.items() if names}
   radius = settings.store_radius_m
+  if wider:
+    radius = min(radius * 2, MAX_RADIUS_M)
   if wanted:
     # The search is centred on a point rounded to about 100 m, so nearby users share cache
     # entries. Distances are still measured from the exact position.
@@ -297,4 +342,4 @@ def find_stores(lat: float, lon: float, ingredients: list[str], ip: str,
     }
     for category in ORDER if items[category]
   ]
-  return {"radius_m": radius, "groups": groups}
+  return {"radius_m": radius, "groups": groups, "items": shops_per_item(ingredients, stores)}
