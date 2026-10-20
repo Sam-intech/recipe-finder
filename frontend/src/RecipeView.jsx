@@ -1,37 +1,55 @@
-import { useState } from "react";
-import { buildShoppingList, downloadList } from "./api.js";
+import { useEffect, useRef, useState } from "react";
+import { downloadList } from "./api.js";
 
 // Only follow http(s) links from the API, never javascript: or anything else.
 const safeLink = (href) => (/^https?:\/\//.test(href || "") ? href : "");
 
 export default function RecipeView({ recipe, notice }) {
   const [have, setHave] = useState(new Set());
-  const [list, setList] = useState(null);
+  const [stage, setStage] = useState("shop");  // "shop" while buying, "cook" once everything is in
+  const [kitchenOpen, setKitchenOpen] = useState(false);
   const [error, setError] = useState("");
+  const headingRef = useRef(null);
+  const firstRender = useRef(true);
 
   const total = recipe.ingredients.length;
-  const toBuy = total - have.size;
+  const toGet = recipe.ingredients.filter((item) => !have.has(item.name));
+  const inKitchen = recipe.ingredients.filter((item) => have.has(item.name));
   const isAI = recipe.source === "ai";
   const isPolished = recipe.source === "polished";
   const cuisine = recipe.area || recipe.category;
+  const link = safeLink(recipe.source_url) || safeLink(recipe.page_url);
+
+  // When the stage changes, go to the top and move focus to the new heading so screen reader
+  // and keyboard users land in the right place. Skipped on first render.
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    window.scrollTo({ top: 0 });
+    headingRef.current?.focus();
+  }, [stage]);
 
   function toggle(name) {
     const next = new Set(have);
     next.has(name) ? next.delete(name) : next.add(name);
     setHave(next);
-    setList(null);  // the old list is out of date once a tick changes
   }
 
-  async function makeList() {
-    setError("");
-    try {
-      setList(await buildShoppingList(recipe, [...have]));
-    } catch (err) {
-      setError(err.message);
-    }
+  // "Ingredients complete" means everything is in the kitchen, whatever was ticked before.
+  function complete() {
+    setHave(new Set(recipe.ingredients.map((item) => item.name)));
+    setStage("cook");
+  }
+
+  function backToShop() {
+    setKitchenOpen(true);
+    setStage("shop");
   }
 
   async function download(format) {
+    setError("");
     try {
       await downloadList(recipe, [...have], format);
     } catch (err) {
@@ -42,37 +60,57 @@ export default function RecipeView({ recipe, notice }) {
   return (
     <div className="mx-auto max-w-6xl px-4 pb-10 pt-8 sm:px-8">
       <section className="grid gap-4 lg:grid-cols-12">
-        {/* Photo tile. AI recipes have no photo, so they get a tinted tile instead. */}
-        <div className="rise relative min-h-80 overflow-hidden rounded-[36px] bg-[#d9e3d2] lg:col-span-7 lg:min-h-[480px]">
-          {recipe.thumbnail ? (
-            <img src={recipe.thumbnail} alt={recipe.name} onError={(e) => { e.currentTarget.style.display = "none"; }} className="absolute inset-0 h-full w-full object-cover" />
-          ) : (
-            <span className="absolute inset-0 flex items-center justify-center p-10 text-center font-display text-2xl text-ink/50">
-              No photo for AI-written recipes
-            </span>
-          )}
-        </div>
-
-        {/* Title tile with the live "what's left to buy" bar. */}
-        <div className="rise flex flex-col justify-between gap-6 rounded-[36px] bg-orchid p-8 text-white [animation-delay:80ms] sm:p-10 lg:col-span-5">
-          <div className="flex flex-wrap gap-2">
-            {cuisine && <span className="rounded-full bg-white/15 px-3.5 py-2 text-sm">{cuisine}</span>}
-            {isAI && <span className="rounded-full bg-white px-3.5 py-2 text-sm text-orchid">AI-written</span>}
-            {isPolished && <span className="rounded-full bg-white px-3.5 py-2 text-sm text-orchid">Tidied up by AI</span>}
-          </div>
-          <h1 className="font-display text-[clamp(40px,4.6vw,72px)] font-extrabold leading-[.92] [overflow-wrap:anywhere] tracking-[-.045em]">
-            {recipe.name}
-          </h1>
-          <div>
-            <div className="h-2.5 overflow-hidden rounded-full bg-white/20">
-              <div className="h-full rounded-full bg-leaf transition-[width] duration-500"
-                style={{ width: (total ? (have.size / total) * 100 : 0) + "%" }} />
+        {stage === "shop" ? (
+          <>
+            {/* Photo tile. AI recipes have no photo, so they get a tinted tile instead. */}
+            <div className="rise relative min-h-80 overflow-hidden rounded-[36px] bg-[#d9e3d2] lg:col-span-7 lg:min-h-[480px]">
+              {recipe.thumbnail ? (
+                <img src={recipe.thumbnail} alt={recipe.name} onError={(e) => { e.currentTarget.style.display = "none"; }} className="absolute inset-0 h-full w-full object-cover" />
+              ) : (
+                <span className="absolute inset-0 flex items-center justify-center p-10 text-center font-display text-2xl text-ink/50">
+                  No photo for AI-written recipes
+                </span>
+              )}
             </div>
-            <p className="mt-3">
-              {toBuy === 0 ? "You have everything" : `${have.size} in your kitchen, ${toBuy} to buy`}
-            </p>
+
+            {/* Title tile with the live "what's left to get" bar. */}
+            <div className="rise flex flex-col justify-between gap-6 rounded-[36px] bg-orchid p-8 text-white [animation-delay:80ms] sm:p-10 lg:col-span-5">
+              <div className="flex flex-wrap gap-2">
+                {cuisine && <span className="rounded-full bg-white/15 px-3.5 py-2 text-sm">{cuisine}</span>}
+                {isAI && <span className="rounded-full bg-white px-3.5 py-2 text-sm text-orchid">AI-written</span>}
+                {isPolished && <span className="rounded-full bg-white px-3.5 py-2 text-sm text-orchid">Tidied up by AI</span>}
+              </div>
+              <h1 ref={headingRef} tabIndex={-1}
+                className="font-display text-[clamp(40px,4.6vw,72px)] font-extrabold leading-[.92] [overflow-wrap:anywhere] tracking-[-.045em] outline-none">
+                {recipe.name}
+              </h1>
+              <div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-white/20" aria-hidden="true">
+                  <div className="h-full rounded-full bg-leaf transition-[width] duration-500"
+                    style={{ width: (total ? (inKitchen.length / total) * 100 : 0) + "%" }} />
+                </div>
+                <p className="mt-3">
+                  {toGet.length === 0 ? "You have everything" : `${inKitchen.length} in your kitchen, ${toGet.length} to get`}
+                </p>
+              </div>
+            </div>
+          </>
+        ) : (
+          /* Cook stage: the photo and hero make way for a short banner. */
+          <div className="rise flex flex-wrap items-center justify-between gap-4 rounded-[36px] bg-leaf p-6 sm:p-8 lg:col-span-12">
+            <div className="min-w-0">
+              <p className="text-muted">{recipe.name}</p>
+              <h1 ref={headingRef} tabIndex={-1}
+                className="font-display text-[clamp(30px,3.6vw,44px)] font-extrabold leading-none tracking-[-.035em] outline-none">
+                Everything's in. Let's cook.
+              </h1>
+            </div>
+            <button onClick={backToShop}
+              className="min-h-11 rounded-full border border-ink/30 px-5 hover:bg-white/50">
+              Back to ingredients
+            </button>
           </div>
-        </div>
+        )}
 
         {isAI && (
           <p className="rounded-[24px] bg-white px-6 py-4 text-muted lg:col-span-12">
@@ -90,62 +128,184 @@ export default function RecipeView({ recipe, notice }) {
           <p role="status" className="rounded-[24px] bg-white px-6 py-4 text-muted lg:col-span-12">{notice}</p>
         )}
 
-        {/* Ingredients tile. */}
-        <div className="rise rounded-[36px] bg-white p-6 [animation-delay:160ms] sm:p-8 lg:col-span-5">
-          <h2 className="font-display text-[28px] font-semibold tracking-tight">Ingredients</h2>
-          <p className="mb-4 mt-1 text-muted">Check off what you already have.</p>
-          <ul>
-            {recipe.ingredients.map((item) => {
-              const owned = have.has(item.name);
-              return (
-                <li key={item.name} className="border-t border-line">
-                  <label className="flex min-h-13 cursor-pointer items-center gap-3.5 py-2">
-                    <input type="checkbox" checked={owned} onChange={() => toggle(item.name)}
-                      className="size-5.5 accent-sage" />
-                    <span className={"flex-1 text-[17px] transition-colors " + (owned ? "text-muted line-through" : "")}>
-                      {item.name}
-                    </span>
-                    <span className="text-right text-muted">{item.measure}</span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-
-          {toBuy > 0 && !list && (
-            <button onClick={makeList}
-              className="mt-6 min-h-14 w-full rounded-full bg-ink font-semibold text-white hover:bg-orchid">
-              Make my shopping list
-            </button>
-          )}
-          {list && (
-            <div className="mt-6 rounded-[24px] bg-porcelain p-5">
-              <p className="font-display text-xl font-semibold">Your shopping list</p>
-              <ul className="mt-3 space-y-1.5">
-                {list.map((item) => (
-                  <li key={item.name} className="flex justify-between gap-4">
-                    <span>{item.name}</span>
-                    <span className="text-muted">{item.measure}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button onClick={() => download("csv")}
-                  className="min-h-11 rounded-full bg-orchid px-5 text-sm font-semibold text-white hover:bg-ink">
-                  Download spreadsheet (CSV)
-                </button>
-                <button onClick={() => download("md")}
-                  className="min-h-11 rounded-full border border-[#ddd3dd] bg-white px-5 text-sm hover:text-orchid">
-                  Download checklist
-                </button>
-              </div>
-            </div>
-          )}
-          {error && <p className="mt-3 text-orchid">{error}</p>}
-        </div>
-
-        <CookMode steps={recipe.steps} link={safeLink(recipe.source_url) || safeLink(recipe.page_url)} />
+        {stage === "shop" ? (
+          <>
+            <IngredientsTile
+              toGet={toGet} inKitchen={inKitchen}
+              kitchenOpen={kitchenOpen} onToggleKitchen={() => setKitchenOpen(!kitchenOpen)}
+              onToggle={toggle} onComplete={complete} onDownload={download} error={error} />
+            <LockedCookMode steps={recipe.steps} />
+          </>
+        ) : (
+          <>
+            <CookMode steps={recipe.steps} link={link} />
+            <IngredientReference ingredients={recipe.ingredients} />
+          </>
+        )}
       </section>
+    </div>
+  );
+}
+
+// Two lists: "Still to get" (live, this is the shopping list) and a collapsed "In your kitchen".
+// Ticking moves an ingredient between them; unticking moves it back.
+function IngredientsTile({ toGet, inKitchen, kitchenOpen, onToggleKitchen, onToggle, onComplete, onDownload, error }) {
+  return (
+    <div className="rise flex flex-col gap-6 rounded-[36px] bg-white p-6 [animation-delay:160ms] sm:p-8 lg:col-span-5">
+      <div>
+        <h2 className="font-display text-[28px] font-semibold tracking-tight">Ingredients</h2>
+        <p className="mt-1 text-muted">
+          Tick what you already have. It moves to your kitchen, and what's left is your shopping list.
+        </p>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between gap-3 pb-2">
+          <h3 className="font-display text-xl font-semibold">Still to get</h3>
+          <span className="rounded-full bg-porcelain px-3 py-0.5 text-[15px] font-semibold text-orchid">{toGet.length}</span>
+        </div>
+        {toGet.length > 0 ? (
+          <>
+            <ul>
+              {toGet.map((item) => (
+                <IngredientRow key={item.name} item={item} owned={false} onToggle={onToggle} />
+              ))}
+            </ul>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button onClick={() => onDownload("csv")}
+                className="min-h-11 rounded-full border border-[#ddd3dd] bg-white px-5 text-[15px] hover:text-orchid">
+                Download spreadsheet (CSV)
+              </button>
+              <button onClick={() => onDownload("md")}
+                className="min-h-11 rounded-full border border-[#ddd3dd] bg-white px-5 text-[15px] hover:text-orchid">
+                Download checklist
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="border-t border-line pt-3.5 font-semibold text-sage">Nothing left to buy.</p>
+        )}
+        {error && <p role="alert" className="mt-3 text-orchid">{error}</p>}
+      </div>
+
+      <div>
+        <button onClick={onToggleKitchen} aria-expanded={kitchenOpen} aria-controls="in-your-kitchen"
+          className="flex min-h-14 w-full items-center gap-3 rounded-[20px] bg-[#edf3e8] px-4 py-3 text-left text-[17px]">
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4f7a3a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="9" /><path d="M8 12.5l2.7 2.7L16 9.5" />
+          </svg>
+          <span className="font-semibold">In your kitchen</span>
+          <span className="ml-auto rounded-full bg-white px-3 py-0.5 text-[15px] font-semibold text-sage">{inKitchen.length}</span>
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className={"transition-transform duration-200 " + (kitchenOpen ? "rotate-180" : "")}>
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+        {kitchenOpen && (
+          <div id="in-your-kitchen" className="px-1 pt-2">
+            {inKitchen.length > 0 ? (
+              <>
+                <ul>
+                  {inKitchen.map((item) => (
+                    <IngredientRow key={item.name} item={item} owned onToggle={onToggle} />
+                  ))}
+                </ul>
+                <p className="mt-2.5 text-sm text-muted">Untick anything you ticked by mistake and it goes back on the list.</p>
+              </>
+            ) : (
+              <p className="text-[15px] text-muted">Nothing ticked yet.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2.5">
+        <button onClick={onComplete}
+          className="flex min-h-14 w-full items-center justify-center gap-2.5 rounded-full bg-orchid text-[17px] font-semibold text-white hover:bg-ink">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12.5l4.5 4.5L19 7.5" />
+          </svg>
+          Ingredients complete
+        </button>
+        <p className="text-center text-sm text-muted">
+          {toGet.length > 0
+            ? "Back from the shops? This ticks everything off and opens cook mode."
+            : "You have everything. Cook mode is ready."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function IngredientRow({ item, owned, onToggle }) {
+  return (
+    <li className="border-t border-line">
+      <label className="flex min-h-13 cursor-pointer items-center gap-3.5 py-1.5">
+        <input type="checkbox" checked={owned} onChange={() => onToggle(item.name)} className="size-5.5 accent-sage" />
+        <span className={"flex-1 text-[17px] " + (owned ? "text-muted" : "")}>{item.name}</span>
+        <span className="text-right text-muted">{item.measure}</span>
+      </label>
+    </li>
+  );
+}
+
+// Shown in place of cook mode until the ingredients are complete. Peeking at the steps is
+// allowed, so people can read ahead before they go shopping.
+function LockedCookMode({ steps }) {
+  const [peek, setPeek] = useState(false);
+
+  return (
+    <div className="rise flex flex-col gap-5 rounded-[36px] bg-white p-6 [animation-delay:240ms] sm:p-10 lg:col-span-7">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-display text-[28px] font-semibold tracking-tight">Cook mode</h2>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-porcelain px-3 py-1.5 text-sm text-muted">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" />
+          </svg>
+          Locked
+        </span>
+      </div>
+      <p className="font-display text-[clamp(24px,2.6vw,32px)] leading-[1.2] tracking-tight text-muted">
+        Opens once your ingredients are complete.
+      </p>
+      <div className="flex gap-1.5" aria-hidden="true">
+        {steps.map((_, i) => <span key={i} className="h-1.5 flex-1 rounded-full bg-line" />)}
+      </div>
+      <p className="text-muted">{steps.length} steps, shown one at a time, big enough to read from across the kitchen.</p>
+      <div>
+        <button onClick={() => setPeek(!peek)} aria-expanded={peek} aria-controls="peek-steps"
+          className="min-h-11 text-orchid underline underline-offset-4">
+          {peek ? "Hide the steps" : "Peek at the steps"}
+        </button>
+        {peek && (
+          <ol id="peek-steps" className="mt-3 space-y-4">
+            {steps.map((text, i) => (
+              <li key={i} className="grid grid-cols-[2.25rem_1fr] gap-2.5">
+                <span className="font-display text-[22px] font-extrabold text-orchid">{i + 1}</span>
+                <span className="text-[17px] leading-relaxed">{text}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Read-only amounts beside the steps, so nobody has to go back to check "how much thyme".
+function IngredientReference({ ingredients }) {
+  return (
+    <div className="rise rounded-[36px] bg-white p-6 [animation-delay:160ms] sm:p-8 lg:col-span-5">
+      <h2 className="font-display text-[28px] font-semibold tracking-tight">Ingredients</h2>
+      <p className="mb-3 mt-1 text-muted">Amounts at a glance while you cook.</p>
+      <ul>
+        {ingredients.map((item) => (
+          <li key={item.name} className="flex justify-between gap-4 border-t border-line py-2.5">
+            <span>{item.name}</span>
+            <span className="text-right text-muted">{item.measure}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
